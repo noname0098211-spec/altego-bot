@@ -1,10 +1,13 @@
+import os
 import random
 import requests
 import telebot
 from telebot import types
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
-TELEGRAM_TOKEN = "8992810594:AAFURhqrrsAUN85IicIA0tzjEm65Ispukus"
-GOOGLE_API_KEY = "AQ.Ab8RN6K2qIg6fv66pL4ehhJh4FPlS5N31gh1cBv4pfzyXDzekQ"
+TELEGRAM_TOKEN = "8992810594:AAG4XcGdUWyw5ILDaT_tnx1d-bHIvf-21Xk"
+GOOGLE_API_KEY = "AQ.Ab8RN6KX6SzNLgxMURRq_gLOl-fIpgkXv_dQhonVqD4IJTBhVg"
 
 SUPER_ADMIN_USERNAME = "kloyxx"
 
@@ -58,46 +61,6 @@ chat_counters = {}
 chat_usernames = {}
 
 
-def get_mode_keyboard():
-  markup = types.InlineKeyboardMarkup(row_width=2)
-  markup.add(
-      types.InlineKeyboardButton(
-          "📱 Тикток-Токсик 🔥", callback_data="mode_tiktok_toxic"
-      ),
-      types.InlineKeyboardButton(
-          "🥊 Жесткий Тренер 💪", callback_data="mode_trainer"
-      ),
-      types.InlineKeyboardButton("🤓 Главный Душнила", callback_data="mode_dushnila"),
-      types.InlineKeyboardButton(
-          "🔮 Гадалка / Таро 🃏", callback_data="mode_fortune"
-      ),
-      types.InlineKeyboardButton("🕶 Братва из 90-х", callback_data="mode_bro90s"),
-      types.InlineKeyboardButton(
-          "🎙 Спортивный Диктор ⚽️", callback_data="mode_commentator"
-      ),
-      types.InlineKeyboardButton("🎭 Сарказм", callback_data="mode_sarcastic"),
-      types.InlineKeyboardButton("🎮 Геймер Бро", callback_data="mode_gamer"),
-  )
-  return markup
-
-
-def can_manage_bot(chat_id, user):
-  if not user:
-    return False
-  if (
-      user.username
-      and user.username.lower() == SUPER_ADMIN_USERNAME.lower()
-  ):
-    return True
-  if chat_id > 0:
-    return False
-  try:
-    member = bot.get_chat_member(chat_id, user.id)
-    return member.status in ["administrator", "creator"]
-  except Exception:
-    return False
-
-
 def get_ai_response(messages_history):
   url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent"
   contents = []
@@ -125,7 +88,8 @@ def get_ai_response(messages_history):
     result = response.json()
 
     if "error" in result:
-      return f"Ошибка Google API: {result['error'].get('message', 'Неизвестная ошибка')}"
+      err_msg = result['error'].get('message', 'Неизвестная ошибка')
+      return f"⚠️ Ошибка Google API: {err_msg}. (Убедитесь, что используется ключ из Google AI Studio, начинающийся с AIzaSy...)"
 
     if "candidates" in result and len(result["candidates"]) > 0:
       candidate = result["candidates"][0]
@@ -139,145 +103,10 @@ def get_ai_response(messages_history):
 
 @bot.message_handler(commands=["start", "mode"])
 def send_welcome(message):
-  if not can_manage_bot(message.chat.id, message.from_user):
-    bot.reply_to(
-        message, "⛔️ Настраивать бота могут только администраторы чата!"
-    )
-    return
-
   bot.send_message(
       message.chat.id,
-      "Панель управления ботом. Выбери режим:",
-      reply_markup=get_mode_keyboard(),
+      "Панель управления ботом. Бот на связи!",
   )
-
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("mode_"))
-def callback_mode(call):
-  chat_id = call.message.chat.id
-
-  if not can_manage_bot(chat_id, call.from_user):
-    bot.answer_callback_query(
-        call.id,
-        "⛔️ Менять режим могут только администраторы чата!",
-        show_alert=True,
-    )
-    return
-
-  mode_key = call.data.replace("mode_", "")
-  user_modes[chat_id] = mode_key
-  user_history[chat_id] = [{"role": "system", "content": PROMPTS[mode_key]}]
-
-  mode_names = {
-      "tiktok_toxic": "📱 Тикток-Токсик 🔥",
-      "trainer": "🥊 Жесткий Тренер 💪",
-      "dushnila": "🤓 Главный Душнила",
-      "fortune": "🔮 Гадалка / Таро 🃏",
-      "bro90s": "🕶 Братва из 90-х",
-      "commentator": "🎙 Спортивный Диктор ⚽️",
-      "sarcastic": "🎭 Сарказм",
-      "gamer": "🎮 Геймер Бро",
-  }
-
-  bot.answer_callback_query(call.id, "Режим изменен!")
-  bot.send_message(
-      chat_id,
-      f"Режим изменен на: *{mode_names[mode_key]}*!\nИстория очищена.",
-      parse_mode="Markdown",
-  )
-
-
-@bot.message_handler(commands=["predict"])
-def handle_predict(message):
-  bot.send_chat_action(message.chat.id, "typing")
-  user_tag = (
-      f"@{message.from_user.username}"
-      if message.from_user.username
-      else message.from_user.first_name
-  )
-  predict_prompt = [
-      {"role": "system", "content": PROMPTS["fortune"]},
-      {
-          "role": "user",
-          "content": (
-              f"Сделай ОЧЕНЬ КОРОТКОЕ (максимум 2-3 предложения), кринжовое,"
-              f" трешовое и жесткое предсказание для {user_tag}. Используй мат"
-              " и чернуху!"
-          ),
-      },
-  ]
-  reply = get_ai_response(predict_prompt)
-  bot.reply_to(message, reply)
-
-
-@bot.message_handler(commands=["duel"])
-def handle_duel(message):
-  chat_id = message.chat.id
-  bot.send_chat_action(chat_id, "typing")
-  fighter1 = (
-      f"@{message.from_user.username}"
-      if message.from_user.username
-      else message.from_user.first_name
-  )
-  target = message.text.replace("/duel", "").strip()
-  if not target and message.reply_to_message:
-    target = (
-        f"@{message.reply_to_message.from_user.username}"
-        if message.reply_to_message.from_user.username
-        else message.reply_to_message.from_user.first_name
-    )
-  if not target:
-    target = "случайного соперника из чата"
-
-  duel_prompt = [
-      {"role": "system", "content": PROMPTS["commentator"]},
-      {
-          "role": "user",
-          "content": (
-              f"Прокомментируй жесткую дуэль и эпичную схватку между {fighter1}"
-              f" и {target}! Опиши их битву, используй капс, спортивные крики и"
-              " объяви победителя!"
-          ),
-      },
-  ]
-  reply = get_ai_response(duel_prompt)
-  bot.reply_to(message, reply)
-
-
-@bot.message_handler(commands=["roast"])
-def handle_roast(message):
-  chat_id = message.chat.id
-  bot.send_chat_action(chat_id, "typing")
-  mode = user_modes.get(chat_id, "tiktok_toxic")
-  history_slice = user_history.get(chat_id, [])[-30:]
-  chat_text = "\n".join([
-      m["content"]
-      for m in history_slice
-      if isinstance(m["content"], str) and m["role"] == "user"
-  ])
-
-  target = message.text.replace("/roast", "").strip()
-  if not target and message.reply_to_message:
-    target = (
-        f"@{message.reply_to_message.from_user.username}"
-        if message.reply_to_message.from_user.username
-        else message.reply_to_message.from_user.first_name
-    )
-
-  roast_prompt = [
-      {"role": "system", "content": PROMPTS[mode]},
-      {
-          "role": "user",
-          "content": (
-              "Вот последние сообщения из чата:\n"
-              f"{chat_text}\n\n"
-              f"Прожарь жестко {target if target else 'весь этот чат'}, опираясь"
-              " на их базар выше!"
-          ),
-      },
-  ]
-  reply = get_ai_response(roast_prompt)
-  bot.reply_to(message, reply)
 
 
 @bot.message_handler(func=lambda message: True)
@@ -293,77 +122,20 @@ def handle_message(message):
       else message.from_user.first_name
   )
 
-  if chat_id not in chat_usernames:
-    chat_usernames[chat_id] = set()
-  chat_usernames[chat_id].add(user_tag)
-
   if chat_id not in user_history or not user_history[chat_id]:
-    mode = user_modes.get(chat_id, "tiktok_toxic")
-    user_history[chat_id] = [{"role": "system", "content": PROMPTS[mode]}]
+    user_history[chat_id] = [{"role": "system", "content": PROMPTS["tiktok_toxic"]}]
 
   user_history[chat_id].append(
       {"role": "user", "content": f"{user_tag}: {text}"}
   )
-  if len(user_history[chat_id]) > 41:
-    user_history[chat_id] = [user_history[chat_id][0]] + user_history[
-        chat_id
-    ][-40:]
 
-  chat_counters[chat_id] = chat_counters.get(chat_id, 0) + 1
-
-  if text.lower().startswith("altego какой шанс"):
-    chance = random.randint(0, 100)
-    users = list(chat_usernames[chat_id])
-    random_user = random.choice(users) if users else user_tag
-    phrases = [
-        f"🎲 Шанс того, что {random_user} это сделает — ровно {chance}%!",
-        f"📊 Мои расчеты показывают {chance}% для {random_user}. Живите с этим.",
-        f"🔮 Карты говорят: {chance}% на успех {random_user}.",
-        f"💥 Всего {chance}%. {random_user}, кринж полный, конечно.",
-    ]
-    bot.reply_to(message, random.choice(phrases))
-    return
-
-  if text.lower().startswith("altego кто сегодня"):
-    users = list(chat_usernames[chat_id])
-    chosen_user = random.choice(users) if users else user_tag
-    action = text[18:].strip()
-    phrases = [
-        f"👉 Однозначно это {chosen_user}!",
-        f"🏆 Победитель в категории '{action}' — {chosen_user}!",
-        f"💀 Без вариантов, сегодня это {chosen_user}.",
-        f"🎯 Стрелы угара указывают прямо на {chosen_user}!",
-    ]
-    bot.reply_to(message, random.choice(phrases))
-    return
-
-  is_private = message.chat.type == "private"
-  bot_user = bot.get_me()
-  is_reply_to_bot = (
-      message.reply_to_message
-      and message.reply_to_message.from_user.id == bot_user.id
-  )
-  is_mentioned = (
-      bot_user.username and f"@{bot_user.username.lower()}" in text.lower()
-  )
-
-  should_auto_respond = False
-  if chat_counters[chat_id] >= 100:
-    chat_counters[chat_id] = 0
-    should_auto_respond = True
-
-  if is_private or is_reply_to_bot or is_mentioned or should_auto_respond:
-    bot.send_chat_action(chat_id, "typing")
-    ai_reply = get_ai_response(user_history[chat_id])
-    user_history[chat_id].append({"role": "assistant", "content": ai_reply})
-    bot.reply_to(message, ai_reply)
+  bot.send_chat_action(chat_id, "typing")
+  ai_reply = get_ai_response(user_history[chat_id])
+  user_history[chat_id].append({"role": "assistant", "content": ai_reply})
+  bot.reply_to(message, ai_reply)
 
 
-print("Бот запущен на Render!")
-import os
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import threading
-
+# Поднимаем веб-сервер для Render, чтобы не было ошибок порта
 class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -379,5 +151,3 @@ threading.Thread(target=run_server, daemon=True).start()
 
 print("Бот запущен на Render!")
 bot.polling(non_stop=True)
-
-    
