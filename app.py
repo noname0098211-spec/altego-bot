@@ -3,7 +3,7 @@ import requests
 import telebot
 from telebot import types
 
-TELEGRAM_TOKEN = "8992810594:AAHv1D0V6Ti8a4Esn-tQXj5LFQkzYe0rH0o"
+TELEGRAM_TOKEN = "8992810594:AAFURhqrrsAUN85IicIA0tzjEm65Ispukus"
 GOOGLE_API_KEY = "AQ.Ab8RN6K2qIg6fv66pL4ehhJh4FPlS5N31gh1cBv4pfzyXDzekQ"
 
 SUPER_ADMIN_USERNAME = "kloyxx"
